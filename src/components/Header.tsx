@@ -38,6 +38,7 @@ interface HeaderProps {
   googleUser: any;
   onGoogleLogin: () => void;
   onGoogleLogout: () => void;
+  onRunDiagnostic: (spreadsheetId: string) => Promise<{ logs: { timestamp: string; type: 'info' | 'success' | 'error'; message: string }[]; success: boolean }>;
 }
 
 export default function Header({
@@ -55,12 +56,35 @@ export default function Header({
   onToggleTheme,
   googleUser,
   onGoogleLogin,
-  onGoogleLogout
+  onGoogleLogout,
+  onRunDiagnostic
 }: HeaderProps) {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSheetsConfig, setShowSheetsConfig] = useState(false);
   const [sheetIdInput, setSheetIdInput] = useState(syncStatus.spreadsheetId || '1H_ux2lYkQ_Z_J2pOCmXN5kE60Q60M2C7');
+  const [diagnosticLogs, setDiagnosticLogs] = useState<{ timestamp: string; type: 'info' | 'success' | 'error'; message: string }[]>([]);
+  const [isDiagnosing, setIsDiagnosing] = useState(false);
+
+  const handleRunDiagnostics = async () => {
+    setIsDiagnosing(true);
+    setDiagnosticLogs([{ timestamp: new Date().toLocaleTimeString('ar-EG'), type: 'info', message: 'جاري تهيئة فحص الاتصال التلقائي...' }]);
+    try {
+      const result = await onRunDiagnostic(sheetIdInput);
+      setDiagnosticLogs(result.logs);
+    } catch (err: any) {
+      setDiagnosticLogs(prev => [
+        ...prev,
+        {
+          timestamp: new Date().toLocaleTimeString('ar-EG'),
+          type: 'error',
+          message: `خطأ غير متوقع أثناء الفحص: ${err?.message || err}`
+        }
+      ]);
+    } finally {
+      setIsDiagnosing(false);
+    }
+  };
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -241,6 +265,42 @@ export default function Header({
                   </div>
                 </div>
               </form>
+
+              {/* Diagnostic Section */}
+              <div className="mt-4 pt-3 border-t border-gray-150 dark:border-maroon-900/30 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-gray-700 dark:text-gray-300">أداة فحص واكتشاف الأخطاء للربط 🛠️</span>
+                  <button
+                    type="button"
+                    onClick={handleRunDiagnostics}
+                    disabled={isDiagnosing}
+                    className="px-2 py-0.5 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-300 disabled:dark:bg-maroon-950/20 text-white rounded text-[10px] font-bold cursor-pointer transition-colors"
+                  >
+                    {isDiagnosing ? 'جاري الفحص...' : 'فحص الاتصال والملف'}
+                  </button>
+                </div>
+
+                {/* Diagnostic Logs Panel */}
+                {diagnosticLogs.length > 0 && (
+                  <div className="rounded-lg bg-gray-900 text-gray-200 p-2.5 font-mono text-[9px] max-h-48 overflow-y-auto space-y-1.5 text-left select-text" style={{ direction: 'ltr' }}>
+                    {diagnosticLogs.map((log, index) => (
+                      <div
+                        key={index}
+                        className={`${
+                          log.type === 'error'
+                            ? 'text-red-400 font-semibold'
+                            : log.type === 'success'
+                            ? 'text-emerald-400'
+                            : 'text-sky-300'
+                        }`}
+                      >
+                        <span className="opacity-50 text-[8px] mr-1">[{log.timestamp}]</span>
+                        {log.message}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

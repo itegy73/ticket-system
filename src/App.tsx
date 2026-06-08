@@ -30,7 +30,9 @@ import {
 import { 
   findSpreadsheet, 
   createSpreadsheet, 
-  syncAllTasksToSheet 
+  syncAllTasksToSheet,
+  diagnoseSpreadsheetAccess,
+  DiagnosticLog
 } from './lib/googleSheets';
 
 import {
@@ -367,6 +369,43 @@ export default function App() {
     }
   };
 
+  const handleRunSheetsDiagnostic = async (sheetId: string): Promise<{ logs: DiagnosticLog[]; success: boolean }> => {
+    let token = googleToken || await getAccessToken();
+    if (!token) {
+      try {
+        const loggedIn = await googleSignIn();
+        if (loggedIn) {
+          token = loggedIn.accessToken;
+          setGoogleUser(loggedIn.user);
+          setGoogleToken(loggedIn.accessToken);
+        } else {
+          return {
+            logs: [
+              {
+                timestamp: new Date().toLocaleTimeString('ar-EG'),
+                type: 'error',
+                message: 'خطأ: لم يتم تسجيل الدخول لحساب Google للحصول على رمز التوكن.'
+              }
+            ],
+            success: false
+          };
+        }
+      } catch (err: any) {
+        return {
+          logs: [
+            {
+              timestamp: new Date().toLocaleTimeString('ar-EG'),
+              type: 'error',
+              message: `فشل تسجيل الدخول بـ Google: ${err?.message || err}`
+            }
+          ],
+          success: false
+        };
+      }
+    }
+    return diagnoseSpreadsheetAccess(token, sheetId);
+  };
+
   // CRUD Task handlers
   const handleAddTask = async (newTaskData: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'synced'>) => {
     const newTask: Task = {
@@ -547,6 +586,7 @@ export default function App() {
           googleUser={googleUser}
           onGoogleLogin={handleGoogleLogin}
           onGoogleLogout={handleGoogleLogout}
+          onRunDiagnostic={handleRunSheetsDiagnostic}
         />
 
         {/* 3. Render View contents routing context */}

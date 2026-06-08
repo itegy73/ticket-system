@@ -187,3 +187,109 @@ export async function syncAllTasksToSheet(
 
   return updateSheetValues(accessToken, spreadsheetId, rows);
 }
+
+export interface DiagnosticLog {
+  timestamp: string;
+  type: 'info' | 'success' | 'error';
+  message: string;
+}
+
+/**
+ * Runs a complete diagnostic check on a specified Spreadsheet ID to detect 404 or writing/permission errors.
+ */
+export async function diagnoseSpreadsheetAccess(
+  accessToken: string,
+  spreadsheetId: string
+): Promise<{ logs: DiagnosticLog[]; success: boolean }> {
+  const logs: DiagnosticLog[] = [];
+  const log = (type: 'info' | 'success' | 'error', message: string) => {
+    logs.push({ timestamp: new Date().toLocaleTimeString('ar-EG'), type, message });
+  };
+
+  log('info', `بدء فحص وتتبع الاتصال بالجدول ذي المعرّف: ${spreadsheetId}`);
+
+  if (!accessToken) {
+    log('error', 'خطأ: لا يوجد رمز مصادقة Google (Access Token). يرجى ربط الحساب أولاً.');
+    return { logs, success: false };
+  }
+
+  const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`;
+  log('info', `جاري قراءة بيانات الجدول الوصفية (Metadata) من مسار API...`);
+
+  try {
+    const metaRes = await fetch(metaUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    log('info', `حالة استجابة الخادم لطلب البيانات الوصفية: [${metaRes.status} ${metaRes.statusText}]`);
+
+    if (metaRes.status === 404) {
+      log('error', `🚫 خطأ (404 Not Found): جدول البيانات ذو المعرّف "${spreadsheetId}" غير موجود أو تم حذفه بشكل نهائي. يرجى مراجعة المعرّف المدخل.`);
+      return { logs, success: false };
+    } else if (metaRes.status === 403) {
+      log('error', `🚫 خطأ (403 Forbidden / Permission Error): لا تمتلك صلاحية الوصول إلى هذا جدول البيانات أو لم تمنح التطبيق صلاحية الوصول لجوجل درايف (OAuth Scopes).`);
+      return { logs, success: false };
+    } else if (metaRes.status === 401) {
+      log('error', `🚫 خطأ (401 Unauthorized): انتهت صلاحية المصادقة الخاصة بك، يرجى إعادة تسجيل الدخول.`);
+      return { logs, success: false };
+    } else if (!metaRes.ok) {
+      const errorText = await metaRes.text();
+      log('error', `🚫 فشل الاتصال برمز خطأ (${metaRes.status}): ${errorText}`);
+      return { logs, success: false };
+    }
+
+    const metaData = await metaRes.json();
+    log('success', `✅ تم التحقق من وجود الملف بنجاح! عنوان الجدول: "${metaData.properties.title || 'بدون عنوان'}"`);
+
+    // Let's test reading values
+    const readUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A1:B5`;
+    log('info', `جاري اختبار قراءة قيم الخلايا من Sheet1!A1...`);
+
+    const readRes = await fetch(readUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!readRes.ok) {
+      const errorText = await readRes.text();
+      log('error', `⚠️ تنبيه: فشل اختبار قراءة الخلايا (${readRes.status}). قد لا تكون الورقة باسم Sheet1 متواجدة بعد أو فارغة: ${errorText}`);
+    } else {
+      log('success', `✅ تم اختبار قراءة قيم الخلايا بنجاح!`);
+    }
+
+    // Let's test writing a diagnostics cell (Sheet1!Z100 so we don't mess up data)
+    const writeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!Z100?valueInputOption=USER_ENTERED`;
+    log('info', `جاري اختبار الكتابة في خلية تشخيصية غير مرئية (Sheet1!Z100)...`);
+
+    const writeRes = await fetch(writeUrl, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        values: [[`تشخيص تلقائي منظم - Diagnostic Check: OK (${new Date().toISOString()})`]],
+      }),
+    });
+
+    log('info', `حالة استجابة خادم الكتابة: [${writeRes.status} ${writeRes.statusText}]`);
+
+    if (writeRes.status === 403) {
+      log('error', `🚫 خطأ (403 Permission Error): حسابك لا يملك صلاحيات الكتابة أو تعديل هذا الملف (صلاحيات القراءة فقط). يرجى مراجعة إعدادات المشاركة للملف.`);
+      return { logs, success: false };
+    } else if (writeRes.status === 404) {
+      log('error', `🚫 خطأ (404 Write Error): تعذّر التعديل لوجود خلل في استيراد الورقة أو أن الملف غير موجود.`);
+      return { logs, success: false };
+    } else if (!writeRes.ok) {
+      const errorText = await writeRes.text();
+      log('error', `🚫 فشل كتابة البيانات بالجدول (${writeRes.status}): ${errorText}`);
+      return { logs, success: false };
+    }
+
+    log('success', `🎉 تم التحقق بنجاح وتأمين أذونات القراءة والكتابة للجدول! وهو جاهز بالكامل للمزامنة والتخزين.`);
+    return { logs, success: true };
+
+  } catch (error: any) {
+    log('error', `🚨 خطأ في الاتصال بالشبكة أو معالجة الاستجابة: ${error.message || error}`);
+    return { logs, success: false };
+  }
+}
