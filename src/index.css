@@ -1,0 +1,237 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Cairo", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --color-maroon-50: #fdf2f4;
+  --color-maroon-100: #fbe5e9;
+  --color-maroon-200: #f7ced6;
+  --color-maroon-300: #f1a9b7;
+  --color-maroon-400: #e77c92;
+  --color-maroon-500: #d74d6c;
+  --color-maroon-600: #c12e52;
+  --color-maroon-700: #a21f3f;
+  --color-maroon-850: #800020; /* Deep Maroon / نبيتي */
+  --color-maroon-800: #851833;
+  --color-maroon-900: #3d0202;
+  --color-maroon-950: #3f0714;
+  --color-gold-50: #fbf8eb;
+  --color-gold-100: #f6ecce;
+  --color-gold-400: #d4af37; /* Warm Gold */
+  --color-gold-500: #c5a85c;
+  --color-gold-600: #ab8e45;
+}
+
+@layer base {
+  html, body {
+    font-family: 'Cairo', 'Inter', sans-serif;
+    direction: rtl;
+    scroll-behavior: smooth;
+  }
+
+  /* Custom Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(128, 0, 32, 0.2);
+    border-radius: 10px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(128, 0, 32, 0.4);
+  }
+}
+
+.luxury-gradient {
+  background: linear-gradient(135deg, #800020 0%, #3f0714 100%);
+}
+
+.gold-border {
+  border-color: #d4af37;
+}
+
+.gold-text {
+  color: #c5a85c;
+}
+
+/* Animations and helper styles */
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(128, 0, 32, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(128, 0, 32, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(128, 0, 32, 0);
+  }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2s infinite;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* --- Sophisticated Dark Mode Complete Overrides layer --- */
+.dark body, .dark .min-h-screen {
+  background-color: #0a0a0a !important;
+  color: #f3f4f6 !important;
+}
+
+.dark main {
+  background-color: #0d0d0d !important;
+}
+
+/* Sidebar design values on Dark */
+.dark aside {
+  background-color: #3d0202 !important;
+  background-image: none !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.dark aside button[id^="btn-nav-"] {
+  background-color: transparent !important;
+  color: rgba(255, 255, 255, 0.6) !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+.dark aside button[id^="btn-nav-"]:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  color: #ffffff !important;
+}
+
+.dark aside button[id*="dashboard"][class*="text-white"],
+.dark aside button[id*="tasks"][class*="text-white"],
+.dark aside button[id*="performance"][class*="text-white"],
+.dark aside button[id*="support"][class*="text-white"],
+.dark aside button[id*="docs"][class*="text-white"] {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+  border-radius: 0.75rem !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+}
+
+/* Top Header Design on Dark */
+.dark header {
+  background-color: #121212 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+.dark header span {
+  color: #ffffff !important;
+}
+
+/* Stats Cards and normal Container Boards on Dark */
+.dark .dark\:bg-\[\#1a1315\], 
+.dark .dark\:bg-[#1a1315],
+.dark .bg-white.dark\:bg-\[\#1a1315\] {
+  background-color: #161616 !important;
+  border-color: rgba(255, 255, 255, 0.05) !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+}
+
+.dark .dark\:border-maroon-950\/40,
+.dark .dark\:border-[#maroon-950\/40] {
+  border-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+.dark .text-gray-900 {
+  color: #f3f4f6 !important;
+}
+
+.dark .text-gray-500, .dark .text-gray-400 {
+  color: rgba(255, 255, 255, 0.45) !important;
+}
+
+/* Task Cards unique accent sidebar highlight look in dark */
+.dark div[id^="task-card-"] {
+  background-color: #1a1a1a !important;
+  border-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+.dark div[id^="task-card-"] select {
+  background-color: #2a2a2a !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+}
+
+.dark div[id^="task-card-"] .bg-gray-50 {
+  background-color: #2a2a2a !important; 
+  color: #ffffff !important;
+}
+
+/* Tech Specs Code Pre areas */
+.dark .dark\:bg-\[\#140b0d\] {
+  background-color: #140b0d !important;
+  border-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+.dark .dark\:bg-\[\#110507\] {
+  background-color: #0d0d0d !important;
+}
+
+/* Custom dropdown and modal popups on Dark */
+.dark .dark\:bg-\[\#1f1618\], .dark .dark\:bg-\[\#251b1d\] {
+  background-color: #121212 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.15) !important;
+}
+
+.dark select, .dark input, .dark textarea {
+  background-color: #161616 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+
+.dark select option {
+  background-color: #161616 !important;
+  color: #ffffff !important;
+}
+
+.dark input:focus, .dark select:focus, .dark textarea:focus {
+  border-color: #ff3333 !important;
+  outline: none !important;
+}
+
+/* Customized Status indicators alignment with dark design specs */
+.dark [class*="bg-red-600/20"] {
+  background-color: rgba(255, 51, 51, 0.15) !important;
+  color: #ff3333 !important;
+}
+
+.dark [class*="bg-orange-600/20"] {
+  background-color: rgba(249, 115, 22, 0.15) !important;
+  color: #fb923c !important;
+}
+
+.dark [class*="bg-blue-600/20"] {
+  background-color: rgba(37, 99, 235, 0.15) !important;
+  color: #60a5fa !important;
+}
+
+/* Circular charts adjustments */
+.dark circle[class*="text-gray-100"] {
+  color: #2a2a2a !important;
+}
+
+/* Mobile responsive bottom navigation in dark mode alignment */
+.dark #nav-mobile {
+  background-color: #1a1a1a !important;
+  border-color: rgba(255, 255, 255, 0.05) !important;
+}
+
