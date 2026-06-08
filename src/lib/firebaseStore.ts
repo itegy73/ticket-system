@@ -26,7 +26,7 @@ import {
 
 // Re-use or initialize Firebase App instance
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-export const db = getFirestore(app);
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
 // Check if collections are empty, and if so, seed them with initial data
 export async function seedDatabaseIfEmpty() {

@@ -321,22 +321,20 @@ export default function App() {
         }
       }
 
-      let sheetId = syncStatus.spreadsheetId;
-      let sheetUrl = syncStatus.spreadsheetUrl;
+      let sheetId = '';
+      let sheetUrl = '';
 
-      // If no spreadsheet ID or it is the placeholder, look up or create a new one in their Drive
-      if (!sheetId || sheetId === '1H_ux2lYkQ_Z_J2pOCmXN5kE60Q60M2C7') {
-        const existingSheet = await findSpreadsheet(token);
-        if (existingSheet) {
-          sheetId = existingSheet.id;
-          sheetUrl = existingSheet.url;
-          pushNotification('تم العثور على ملف المهام الفندقية السابق في حسابك، جاري تحديثه...', 'success');
-        } else {
-          pushNotification('جاري إنشاء جدول Google Sheets جديد في حسابك على Drive لربط البيانات...', 'info');
-          const newSheet = await createSpreadsheet(token);
-          sheetId = newSheet.id;
-          sheetUrl = newSheet.url;
-        }
+      // Always check user's Drive for an existing spreadsheet first
+      const existingSheet = await findSpreadsheet(token);
+      if (existingSheet) {
+        sheetId = existingSheet.id;
+        sheetUrl = existingSheet.url;
+      } else {
+        // If not found in this account, create a new one!
+        pushNotification('جاري إنشاء جدول Google Sheets جديد في حسابك على Drive لربط وحفظ البيانات...', 'info');
+        const newSheet = await createSpreadsheet(token);
+        sheetId = newSheet.id;
+        sheetUrl = newSheet.url;
       }
 
       // Sync tasks array
