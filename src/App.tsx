@@ -20,6 +20,19 @@ import SupportView from './components/SupportView';
 import DeveloperDocsView from './components/DeveloperDocsView';
 import { Sparkles, Wifi } from 'lucide-react';
 
+// Google Authentication and Google Sheets operations
+import { 
+  initAuth, 
+  googleSignIn, 
+  getAccessToken, 
+  logout 
+} from './lib/googleAuth';
+import { 
+  findSpreadsheet, 
+  createSpreadsheet, 
+  syncAllTasksToSheet 
+} from './lib/googleSheets';
+
 export default function App() {
   
   // Theme state ('light' or 'dark')
@@ -65,6 +78,33 @@ export default function App() {
       spreadsheetId: '1H_ux2lYkQ_Z_J2pOCmXN5kE60Q60M2C7'
     };
   });
+
+  // Google Sign-in and real integrations state
+  const [googleUser, setGoogleUser] = useState<any | null>(null);
+  const [googleToken, setGoogleToken] = useState<string | null>(null);
+
+  // Initialize auth state listener
+  useEffect(() => {
+    const unsubscribe = initAuth(
+      (user, token) => {
+        setGoogleUser(user);
+        setGoogleToken(token);
+        setSyncStatus(prev => ({
+          ...prev,
+          googleEmail: user.email || undefined
+        }));
+      },
+      () => {
+        setGoogleUser(null);
+        setGoogleToken(null);
+      }
+    );
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
+  }, []);
 
   // Current view tab ('dashboard' | 'tasks' | 'performance' | 'support' | 'docs')
   const [currentView, setCurrentView] = useState<string>(() => {
@@ -174,28 +214,113 @@ export default function App() {
     }
   };
 
-  // Simulated & realistic Google Sheets syncing routing
-  const handleSyncWithGoogleSheets = () => {
+  // Google Sign-in and Sync handlers
+  const handleGoogleLogin = async () => {
+    try {
+      const loggedIn = await googleSignIn();
+      if (loggedIn) {
+        setGoogleUser(loggedIn.user);
+        setGoogleToken(loggedIn.accessToken);
+        setSyncStatus(prev => ({
+          ...prev,
+          googleEmail: loggedIn.user.email || undefined
+        }));
+        pushNotification(`تم ربط حساب جوجل بنجاح: ${loggedIn.user.email}`, 'success');
+        
+        // Auto trigger sheet search/creation and initial sync
+        await handleSyncWithGoogleSheets(loggedIn.accessToken, loggedIn.user);
+      }
+    } catch (err: any) {
+      pushNotification(`فشل ربط حساب جوجل: ${err.message || err}`, 'alert');
+    }
+  };
+
+  const handleGoogleLogout = async () => {
+    await logout();
+    setGoogleUser(null);
+    setGoogleToken(null);
+    setSyncStatus(prev => ({
+      ...prev,
+      googleEmail: undefined,
+      spreadsheetUrl: undefined
+    }));
+    pushNotification('تم إزالة ربط حساب جوجل بنجاح.', 'info');
+  };
+
+  // Real Google Sheets syncing routing
+  const handleSyncWithGoogleSheets = async (forcedToken?: string, forcedUser?: any) => {
+    if (syncStatus.offlineMode) {
+      pushNotification('لا يمكن المزامنة أثناء تشغيل وضع الأوفلاين. يرجى تفعيل وضع الاتصال أولاً.', 'alert');
+      return;
+    }
+
     setIsSyncing(true);
     setShowSyncBanner(true);
-    
-    // Simulate API connection latencies
-    setTimeout(() => {
-      setTasks(prev => prev.map(t => ({ ...t, synced: true })));
-      
-      setSyncStatus(prev => ({
-        ...prev,
-        lastSyncTime: new Date().toLocaleTimeString(),
-        pendingSyncCount: 0
-      }));
 
+    try {
+      let token = forcedToken || googleToken || await getAccessToken();
+      let activeUser = forcedUser || googleUser;
+
+      if (!token) {
+        // Trigger popup login to authorize Google account
+        const loggedIn = await googleSignIn();
+        if (loggedIn) {
+          token = loggedIn.accessToken;
+          activeUser = loggedIn.user;
+          setGoogleUser(loggedIn.user);
+          setGoogleToken(loggedIn.accessToken);
+          pushNotification(`تم ربط حساب جوجل بنجاح: ${loggedIn.user.email}`, 'success');
+        } else {
+          throw new Error('لم يكتمل تسجيل الدخول لحساب Google الخاص بك لتنفيذ المزامنة.');
+        }
+      }
+
+      let sheetId = syncStatus.spreadsheetId;
+      let sheetUrl = syncStatus.spreadsheetUrl;
+
+      // If no spreadsheet ID or it is the placeholder, look up or create a new one in their Drive
+      if (!sheetId || sheetId === '1H_ux2lYkQ_Z_J2pOCmXN5kE60Q60M2C7') {
+        const existingSheet = await findSpreadsheet(token);
+        if (existingSheet) {
+          sheetId = existingSheet.id;
+          sheetUrl = existingSheet.url;
+          pushNotification('تم العثور على ملف المهام الفندقية السابق في حسابك، جاري تحديثه...', 'success');
+        } else {
+          pushNotification('جاري إنشاء جدول Google Sheets جديد في حسابك على Drive لربط البيانات...', 'info');
+          const newSheet = await createSpreadsheet(token);
+          sheetId = newSheet.id;
+          sheetUrl = newSheet.url;
+        }
+      }
+
+      // Sync tasks array
+      const success = await syncAllTasksToSheet(token, sheetId, tasks);
+      if (success) {
+        setTasks(prev => prev.map(t => ({ ...t, synced: true })));
+        
+        setSyncStatus(prev => ({
+          ...prev,
+          lastSyncTime: new Date().toLocaleTimeString(),
+          pendingSyncCount: 0,
+          spreadsheetId: sheetId,
+          spreadsheetUrl: sheetUrl,
+          googleEmail: activeUser?.email || undefined
+        }));
+
+        pushNotification('تم ترحيل وتأمين كافه المهمات في حسابك Google Sheets بنجاح! 📊', 'success');
+      } else {
+        throw new Error('لم نستطع كتابة البيانات، يرجى التحقق من أذونات ورقة العمل.');
+      }
+
+    } catch (err: any) {
+      console.error(err);
+      pushNotification(`فشلت المزامنة: ${err.message || 'خطأ غير متوقع'}`, 'alert');
+    } finally {
       setIsSyncing(false);
-      pushNotification('تمت مزامنة كافة المهام والخدمات بنجاح في جدول بيانات Google Sheets الرئيسي!', 'success');
-      
       setTimeout(() => {
         setShowSyncBanner(false);
       }, 3000);
-    }, 1200);
+    }
   };
 
   // CRUD Task handlers
@@ -340,6 +465,9 @@ export default function App() {
           isSyncing={isSyncing}
           theme={theme}
           onToggleTheme={handleToggleTheme}
+          googleUser={googleUser}
+          onGoogleLogin={handleGoogleLogin}
+          onGoogleLogout={handleGoogleLogout}
         />
 
         {/* 3. Render View contents routing context */}

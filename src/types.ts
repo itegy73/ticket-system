@@ -68,4 +68,6 @@ export interface SyncStatus {
   pendingSyncCount: number;
   offlineMode: boolean;
   spreadsheetId: string;
+  spreadsheetUrl?: string;
+  googleEmail?: string;
 }
