@@ -9,6 +9,7 @@ import {
   Wifi, 
   WifiOff, 
   Database, 
+  Cloud,
   Moon, 
   Sun, 
   RefreshCw, 
@@ -112,15 +113,19 @@ export default function Header({
         <div className="relative">
           <button
             onClick={() => setShowSheetsConfig(!showSheetsConfig)}
-            className={`p-2 rounded-lg text-gray-500 hover:text-maroon-850 dark:text-gray-400 dark:hover:text-maroon-200 hover:bg-gray-100 dark:hover:bg-maroon-950/40 cursor-pointer flex items-center gap-1.5 transition-all ${
-              syncStatus.pendingSyncCount > 0 ? 'bg-amber-50 dark:bg-amber-950/10' : ''
+            className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 transition-all cursor-pointer shadow-xs text-[11px] md:text-xs font-bold leading-none ${
+              syncStatus.googleEmail 
+                ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900/40 hover:bg-emerald-100 dark:hover:bg-emerald-950/50 hover:scale-[1.02]'
+                : 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-900/40 hover:bg-amber-100 dark:hover:bg-amber-950/50 hover:scale-[1.02]'
             }`}
             title="إعدادات ومزامنة جوجل شيت"
             id="btn-sheets-config"
           >
-            <Database className={`h-5 w-5 ${isSyncing ? 'animate-spin text-maroon-600' : 'text-gray-500 dark:text-gray-400'}`} />
+            <Cloud className={`h-4.5 w-4.5 shrink-0 ${isSyncing ? 'animate-bounce text-emerald-500' : 'text-amber-500 dark:text-amber-300'}`} />
+            <span>{syncStatus.googleEmail ? 'جوجل شيت متصل ☁️' : 'ربط جوجل شيت ☁️'}</span>
+            
             {syncStatus.pendingSyncCount > 0 && (
-              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white shadow-xs">
+              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white leading-none">
                 {syncStatus.pendingSyncCount}
               </span>
             )}
