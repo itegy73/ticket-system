@@ -33,6 +33,19 @@ import {
   syncAllTasksToSheet 
 } from './lib/googleSheets';
 
+import {
+  seedDatabaseIfEmpty,
+  subscribeTasksDB,
+  subscribeTicketsDB,
+  subscribeNotificationsDB,
+  saveTaskDB,
+  deleteTaskDB,
+  saveTicketDB,
+  saveNotificationDB,
+  db
+} from './lib/firebaseStore';
+import { doc, writeBatch } from 'firebase/firestore';
+
 export default function App() {
   
   // Theme state ('light' or 'dark')
@@ -42,11 +55,7 @@ export default function App() {
   });
 
   // Database / core states
-  const [tasks, setTasks] = useState<Task[]>(() => {
-    const saved = localStorage.getItem('hotel_tasks');
-    return saved ? JSON.parse(saved) : INITIAL_TASKS;
-  });
-
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>(INITIAL_USERS);
   
   const [currentUser, setCurrentUser] = useState<User>(() => {
@@ -58,15 +67,8 @@ export default function App() {
     return INITIAL_USERS[0];
   });
 
-  const [notifications, setNotifications] = useState<Notification[]>(() => {
-    const saved = localStorage.getItem('hotel_notifications');
-    return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
-  });
-
-  const [tickets, setTickets] = useState<SupportTicket[]>(() => {
-    const saved = localStorage.getItem('hotel_tickets');
-    return saved ? JSON.parse(saved) : INITIAL_SUPPORT_TICKETS;
-  });
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
 
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(() => {
     const saved = localStorage.getItem('hotel_sync_status');
@@ -106,6 +108,39 @@ export default function App() {
     };
   }, []);
 
+  // Initialize and subscribe to Firestore databases in real-time
+  useEffect(() => {
+    const startFirebaseSubscriptions = async () => {
+      await seedDatabaseIfEmpty();
+
+      const unsubscribeTasks = subscribeTasksDB((firebaseTasks) => {
+        setTasks(firebaseTasks);
+      });
+
+      const unsubscribeTickets = subscribeTicketsDB((firebaseTickets) => {
+        setTickets(firebaseTickets);
+      });
+
+      const unsubscribeNotifications = subscribeNotificationsDB((firebaseNotifications) => {
+        setNotifications(firebaseNotifications);
+      });
+
+      return () => {
+        unsubscribeTasks();
+        unsubscribeTickets();
+        unsubscribeNotifications();
+      };
+    };
+
+    let cleanupPromise = startFirebaseSubscriptions();
+
+    return () => {
+      cleanupPromise.then(cleanup => {
+        if (cleanup) cleanup();
+      });
+    };
+  }, []);
+
   // Current view tab ('dashboard' | 'tasks' | 'performance' | 'support' | 'docs')
   const [currentView, setCurrentView] = useState<string>(() => {
     // If user is Staff, land them directly in Tasks, otherwise Dashboard!
@@ -131,10 +166,8 @@ export default function App() {
     localStorage.setItem('hotel_theme', theme);
   }, [theme]);
 
-  // Persist states to local storage on modification
+  // Persist states and preferences to local storage on modification
   useEffect(() => {
-    localStorage.setItem('hotel_tasks', JSON.stringify(tasks));
-    
     // Count tasks that are not synced to Sheets
     const unsyncedCount = tasks.filter(t => !t.synced).length;
     setSyncStatus(prev => ({
@@ -146,14 +179,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('hotel_current_user', JSON.stringify(currentUser));
   }, [currentUser]);
-
-  useEffect(() => {
-    localStorage.setItem('hotel_notifications', JSON.stringify(notifications));
-  }, [notifications]);
-
-  useEffect(() => {
-    localStorage.setItem('hotel_tickets', JSON.stringify(tickets));
-  }, [tickets]);
 
   useEffect(() => {
     localStorage.setItem('hotel_sync_status', JSON.stringify(syncStatus));
@@ -180,7 +205,7 @@ export default function App() {
   };
 
   // Immediate notifications helper
-  const pushNotification = (text: string, type: 'info' | 'success' | 'alert') => {
+  const pushNotification = async (text: string, type: 'info' | 'success' | 'alert') => {
     const newNotif: Notification = {
       id: 'notif-' + Date.now(),
       text,
@@ -188,15 +213,36 @@ export default function App() {
       createdAt: new Date().toISOString(),
       read: false
     };
-    setNotifications(prev => [newNotif, ...prev]);
+    try {
+      await saveNotificationDB(newNotif);
+    } catch (err) {
+      console.error(err);
+      setNotifications(prev => [newNotif, ...prev]);
+    }
   };
 
-  const handleMarkRead = (id: string) => {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+  const handleMarkRead = async (id: string) => {
+    const item = notifications.find(n => n.id === id);
+    if (!item) return;
+    try {
+      await saveNotificationDB({ ...item, read: true });
+    } catch (err) {
+      console.error(err);
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    }
   };
 
-  const handleClearNotifications = () => {
-    setNotifications([]);
+  const handleClearNotifications = async () => {
+    try {
+      const batch = writeBatch(db);
+      notifications.forEach(notif => {
+        batch.delete(doc(db, 'notifications', notif.id));
+      });
+      await batch.commit();
+    } catch (err) {
+      console.error(err);
+      setNotifications([]);
+    }
   };
 
   // Toggle Simulated offline mode state
@@ -324,80 +370,115 @@ export default function App() {
   };
 
   // CRUD Task handlers
-  const handleAddTask = (newTaskData: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'synced'>) => {
+  const handleAddTask = async (newTaskData: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'synced'>) => {
     const newTask: Task = {
       ...newTaskData,
       id: 't-' + Date.now(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      synced: !syncStatus.offlineMode // if offline, synced parameter is false
+      synced: !syncStatus.offlineMode
     };
 
-    setTasks(prev => [newTask, ...prev]);
-    pushNotification(`مهمة فندقية جديدة مسجلة بالغرفة ${newTask.roomNumber}: ${newTask.title}`, 'info');
+    try {
+      await saveTaskDB(newTask);
+      pushNotification(`مهمة فندقية جديدة مسجلة بالغرفة ${newTask.roomNumber}: ${newTask.title}`, 'info');
+    } catch (err) {
+      console.error(err);
+      setTasks(prev => [newTask, ...prev]);
+    }
   };
 
-  const handleUpdateTaskStatus = (id: string, newStatus: TaskStatus) => {
-    setTasks(prev => prev.map(task => {
-      if (task.id === id) {
-        const statusChanged = task.status !== newStatus;
-        if (statusChanged) {
-          pushNotification(`تغيير حالة المهمة بالغرفة ${task.roomNumber} لتبدو: ${
-            newStatus === 'completed' ? 'مكتملة بنجاح ✅' : newStatus === 'in_progress' ? 'قيد التنفيذ 🛠️' : 'بالانتظار 🕒'
-          }`, newStatus === 'completed' ? 'success' : 'info');
-        }
-        return {
-          ...task,
-          status: newStatus,
-          updatedAt: new Date().toISOString(),
-          synced: !syncStatus.offlineMode // resets sync if offline
-        };
+  const handleUpdateTaskStatus = async (id: string, newStatus: TaskStatus) => {
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
+
+    const statusChanged = task.status !== newStatus;
+    const updatedTask: Task = {
+      ...task,
+      status: newStatus,
+      updatedAt: new Date().toISOString(),
+      synced: !syncStatus.offlineMode
+    };
+
+    try {
+      await saveTaskDB(updatedTask);
+      if (statusChanged) {
+        pushNotification(`تغيير حالة المهمة بالغرفة ${task.roomNumber} لتبدو: ${
+          newStatus === 'completed' ? 'مكتملة بنجاح ✅' : newStatus === 'in_progress' ? 'قيد التنفيذ 🛠️' : 'بالانتظار 🕒'
+        }`, newStatus === 'completed' ? 'success' : 'info');
       }
-      return task;
-    }));
+    } catch (err) {
+      console.error(err);
+      setTasks(prev => prev.map(t => t.id === id ? updatedTask : t));
+    }
   };
 
-  const handleUpdateTask = (id: string, updatedFields: Partial<Task>) => {
-    setTasks(prev => prev.map(task => {
-      if (task.id === id) {
-        return {
-          ...task,
-          ...updatedFields,
-          updatedAt: new Date().toISOString(),
-          synced: !syncStatus.offlineMode
-        };
-      }
-      return task;
-    }));
-    pushNotification(`تم تعديل بيانات المهمة للغرفة بنجاح.`, 'info');
+  const handleUpdateTask = async (id: string, updatedFields: Partial<Task>) => {
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
+
+    const updatedTask: Task = {
+      ...task,
+      ...updatedFields,
+      updatedAt: new Date().toISOString(),
+      synced: !syncStatus.offlineMode
+    };
+
+    try {
+      await saveTaskDB(updatedTask);
+      pushNotification(`تم تعديل بيانات المهمة للغرفة بنجاح.`, 'info');
+    } catch (err) {
+      console.error(err);
+      setTasks(prev => prev.map(t => t.id === id ? updatedTask : t));
+    }
   };
 
-  const handleDeleteTask = (id: string) => {
+  const handleDeleteTask = async (id: string) => {
     const taskToDelete = tasks.find(t => t.id === id);
-    setTasks(prev => prev.filter(t => t.id !== id));
-    if (taskToDelete) {
-      pushNotification(`تم حذف مهمة الغرفة ${taskToDelete.roomNumber} من النظام.`, 'alert');
+    try {
+      await deleteTaskDB(id);
+      if (taskToDelete) {
+        pushNotification(`تم حذف مهمة الغرفة ${taskToDelete.roomNumber} من النظام.`, 'alert');
+      }
+    } catch (err) {
+      console.error(err);
+      setTasks(prev => prev.filter(t => t.id !== id));
     }
   };
 
   // Support Tickets CRUD
-  const handleAddTicket = (newTicketData: Omit<SupportTicket, 'id' | 'createdAt' | 'status'>) => {
+  const handleAddTicket = async (newTicketData: Omit<SupportTicket, 'id' | 'createdAt' | 'status'>) => {
     const newTicket: SupportTicket = {
       ...newTicketData,
       id: 'st-' + Date.now(),
       status: 'open',
       createdAt: new Date().toISOString()
     };
-    setTickets(prev => [newTicket, ...prev]);
+    try {
+      await saveTicketDB(newTicket);
+    } catch (err) {
+      console.error(err);
+      setTickets(prev => [newTicket, ...prev]);
+    }
   };
 
-  const handleResolveTicket = (id: string, response: string) => {
-    setTickets(prev => prev.map(t => 
-      t.id === id 
-        ? { ...t, status: 'resolved', response } 
-        : t
-    ));
-    pushNotification(`تم الرد وحل تذكرة دعم فني فندقية بنجاح.`, 'success');
+  const handleResolveTicket = async (id: string, response: string) => {
+    const ticket = tickets.find(t => t.id === id);
+    if (!ticket) return;
+
+    const updatedTicket: SupportTicket = {
+      ...ticket,
+      status: 'resolved',
+      response
+    };
+
+    try {
+      await saveTicketDB(updatedTicket);
+      pushNotification(`تم الرد وحل تذكرة دعم فني فندقية بنجاح.`, 'success');
+    } catch (err) {
+      console.error(err);
+      setTickets(prev => prev.map(t => t.id === id ? updatedTicket : t));
+    }
   };
 
   // Dynamic Employee Performance metrics compiling (updates on physical status changes!)

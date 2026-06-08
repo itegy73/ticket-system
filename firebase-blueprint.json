@@ -1,0 +1,67 @@
+{
+  "entities": {
+    "Task": {
+      "title": "Hotel Task",
+      "description": "Represents a critical hotel task (e.g., housekeeping, maintenance, food service).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "roomNumber": { "type": "string" },
+        "department": { "type": "string", "enum": ["housekeeping", "maintenance", "food_service"] },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "in_progress", "completed"] },
+        "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+        "assignedTo": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "synced": { "type": "boolean" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "title", "roomNumber", "department", "description", "status", "priority", "createdAt", "updatedAt", "synced", "createdBy"]
+    },
+    "SupportTicket": {
+      "title": "Support Ticket",
+      "description": "Represents a support or technical inquiry ticket inside the system.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "user": { "type": "string" },
+        "department": { "type": "string" },
+        "issue": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "resolved"] },
+        "createdAt": { "type": "string" },
+        "response": { "type": "string" }
+      },
+      "required": ["id", "title", "user", "department", "issue", "status", "createdAt"]
+    },
+    "Notification": {
+      "title": "System Notification",
+      "description": "Represents real-time alert or event notifications for the employees.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "text": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "success", "alert"] },
+        "createdAt": { "type": "string" },
+        "read": { "type": "boolean" }
+      },
+      "required": ["id", "text", "type", "createdAt", "read"]
+    }
+  },
+  "firestore": {
+    "tasks": {
+      "schema": "Task",
+      "description": "Global collection containing all current active/historic hotel tasks."
+    },
+    "tickets": {
+      "schema": "SupportTicket",
+      "description": "Collection of all support tickets logged."
+    },
+    "notifications": {
+      "schema": "Notification",
+      "description": "Global user/system notifications."
+    }
+  }
+}

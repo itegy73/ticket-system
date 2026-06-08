@@ -3,6 +3,7 @@
   "appId": "1:26000022200:web:e61fc5fcd314ff0170724d",
   "apiKey": "AIzaSyCF0NcJAsGRppRcOTe3wP93UEbAvI84oPU",
   "authDomain": "yodeling-abode-w9z5m.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-1134ec80-e792-4d91-ad84-e16118b27d08",
   "storageBucket": "yodeling-abode-w9z5m.firebasestorage.app",
   "messagingSenderId": "26000022200",
   "measurementId": ""
