@@ -17,7 +17,7 @@ import Sidebar from './components/Sidebar';
 import DashboardView from './components/DashboardView';
 import TasksView from './components/TasksView';
 import SupportView from './components/SupportView';
-import DeveloperDocsView from './components/DeveloperDocsView';
+import GoogleSheetsMirrorView from './components/GoogleSheetsMirrorView';
 import { Sparkles, Wifi } from 'lucide-react';
 
 // Google Authentication and Google Sheets operations
@@ -32,7 +32,8 @@ import {
   createSpreadsheet, 
   syncAllTasksToSheet,
   diagnoseSpreadsheetAccess,
-  DiagnosticLog
+  DiagnosticLog,
+  fetchTasksFromSheet
 } from './lib/googleSheets';
 
 import {
@@ -99,14 +100,14 @@ export default function App() {
   });
 
   // Google Sign-in and real integrations state
-  const [googleUser, setGoogleUser] = useState<any | null>({ email: 'itegy73@gmail.com', displayName: 'مستخدم ريجنسي' });
+  const [googleUser, setGoogleUser] = useState<any | null>({ email: 'itegy73@gmail.com', displayName: 'مستخدم ريجنسي', isMock: true });
   const [googleToken, setGoogleToken] = useState<string | null>('mock-active-token');
 
   // Initialize auth state listener
   useEffect(() => {
     const unsubscribe = initAuth(
       (user, token) => {
-        setGoogleUser(user);
+        setGoogleUser({ ...user, isMock: false });
         setGoogleToken(token);
         setSyncStatus(prev => ({
           ...prev,
@@ -115,7 +116,7 @@ export default function App() {
       },
       () => {
         // Fallback to auto-connected background system if no direct firebase session is active
-        setGoogleUser({ email: 'itegy73@gmail.com', displayName: 'مستخدم ريجنسي' });
+        setGoogleUser({ email: 'itegy73@gmail.com', displayName: 'مستخدم ريجنسي', isMock: true });
         setGoogleToken('mock-active-token');
         setSyncStatus(prev => ({
           ...prev,
@@ -394,19 +395,44 @@ export default function App() {
         sheetUrl = newSheet.url;
       }
 
-      // Sync tasks array
-      const success = await syncAllTasksToSheet(token, sheetId, tasks);
-      if (success) {
-        // Update unsynced tasks with synced: true in Firebase Store
-        const unsyncedTasks = tasks.filter(t => !t.synced);
-        if (unsyncedTasks.length > 0) {
-          const batch = writeBatch(db);
-          unsyncedTasks.forEach(task => {
-            batch.set(doc(db, 'tasks', task.id), { ...task, synced: true }, { merge: true });
-          });
-          await batch.commit();
-        }
+      // Bidirectional sync: Fetch what is currently in Google Sheets
+      const sheetTasks = await fetchTasksFromSheet(token, sheetId);
+      
+      let reconciledTasks = [...tasks];
+      let didFetchFromSheet = false;
+
+      if (sheetTasks !== null) {
+        didFetchFromSheet = true;
+        // Merge Google Sheet tasks and local tasks
+        const mergedTasksMap = new Map<string, Task>();
         
+        // 1. Google Sheets tasks represent the absolute truth for any tasks existing there
+        sheetTasks.forEach(t => {
+          mergedTasksMap.set(t.id, t);
+        });
+
+        // 2. Add local tasks that don't exist in Google Sheet yet (e.g. newly created locally/manually in app)
+        tasks.forEach(localTask => {
+          if (!mergedTasksMap.has(localTask.id)) {
+            mergedTasksMap.set(localTask.id, localTask);
+          }
+        });
+
+        reconciledTasks = Array.from(mergedTasksMap.values());
+      } else {
+        console.warn('Could not read tasks from Google Sheet, proceeding with local tasks to write.');
+      }
+
+      // Update both Firestore database and Google Sheets with the reconciled tasks list
+      // So both sides match 100% and any modification on Sheet propagates
+      const batch = writeBatch(db);
+      reconciledTasks.forEach(task => {
+        batch.set(doc(db, 'tasks', task.id), { ...task, synced: true }, { merge: true });
+      });
+      await batch.commit();
+
+      const success = await syncAllTasksToSheet(token, sheetId, reconciledTasks);
+      if (success) {
         setSyncStatus(prev => ({
           ...prev,
           lastSyncTime: new Date().toLocaleTimeString('ar-EG'),
@@ -417,7 +443,11 @@ export default function App() {
         }));
 
         if (!options?.silent) {
-          pushNotification('تم ترحيل وتأمين كافه المهمات في حسابك Google Sheets بنجاح! 📊', 'success');
+          if (didFetchFromSheet) {
+            pushNotification('تم سحب وتحميل التحديثات الأخيرة من Google Sheet وتحديث التطبيق بنجاح! 🔄📊', 'success');
+          } else {
+            pushNotification('تم ترحيل وتأمين كافه المهمات في حسابك Google Sheets بنجاح! 📊', 'success');
+          }
         }
       } else {
         throw new Error('لم نستطع كتابة البيانات، يرجى التحقق من أذونات ورقة العمل.');
@@ -654,6 +684,7 @@ export default function App() {
           onGoogleLogin={handleGoogleLogin}
           onGoogleLogout={handleGoogleLogout}
           onRunDiagnostic={handleRunSheetsDiagnostic}
+          onOpenSheetsView={() => setCurrentView('docs')}
         />
 
         {/* 3. Render View contents routing context */}
@@ -699,7 +730,14 @@ export default function App() {
           )}
 
           {currentView === 'docs' && (
-            <DeveloperDocsView />
+            <GoogleSheetsMirrorView 
+              tasks={tasks}
+              syncStatus={syncStatus}
+              onSync={() => handleSyncWithGoogleSheets(undefined, undefined, { silent: false })}
+              isSyncing={isSyncing}
+              onUpdateTask={handleUpdateTask}
+              onUpdateSyncStatus={(updates) => setSyncStatus(prev => ({ ...prev, ...updates }))}
+            />
           )}
         </main>
       </div>

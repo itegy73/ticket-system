@@ -13,7 +13,8 @@ import {
   Eye, 
   ShieldAlert,
   User,
-  Sliders
+  Sliders,
+  TableProperties
 } from 'lucide-react';
 import { User as UserType } from '../types';
 
@@ -79,10 +80,10 @@ export default function Sidebar({
     },
     {
       id: 'docs',
-      label: 'دليل النشر والربط',
-      icon: BookOpen,
+      label: 'أرشيف وجداول جوجل شيت',
+      icon: TableProperties,
       allowed: true,
-      badge: 'تقني'
+      badge: 'مباشر ☁️'
     }
   ];
 

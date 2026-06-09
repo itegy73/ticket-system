@@ -293,3 +293,123 @@ export async function diagnoseSpreadsheetAccess(
     return { logs, success: false };
   }
 }
+
+/**
+ * Reads all rows from the Google Sheet and converts them back into Task objects.
+ */
+export async function fetchTasksFromSheet(
+  accessToken: string,
+  spreadsheetId: string
+): Promise<Task[] | null> {
+  const range = 'Sheet1!A2:K2000'; // Reading up to 2000 tasks
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`;
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!res.ok) {
+      console.error('Failed to fetch values from Google Sheet:', await res.text());
+      return null;
+    }
+
+    const data = await res.json();
+    if (!data.values || data.values.length === 0) {
+      return [];
+    }
+
+    // Bidirectional Arabic/English converters
+    const deptReverseMap: Record<string, 'housekeeping' | 'maintenance' | 'food_service'> = {
+      'قسم النظافة': 'housekeeping',
+      'قسم الصيانة': 'maintenance',
+      'خدمة الغرف / الطعام': 'food_service',
+      'housekeeping': 'housekeeping',
+      'maintenance': 'maintenance',
+      'food_service': 'food_service',
+    };
+
+    const statusReverseMap: Record<string, 'pending' | 'in_progress' | 'completed'> = {
+      'بالانتظار 🕒': 'pending',
+      'قيد التنفيذ 🛠️': 'in_progress',
+      'مكتملة بنجاح ✅': 'completed',
+      'pending': 'pending',
+      'in_progress': 'in_progress',
+      'completed': 'completed',
+    };
+
+    const priorityReverseMap: Record<string, 'low' | 'medium' | 'high'> = {
+      'منخفضة': 'low',
+      'متوسطة': 'medium',
+      'قصوى / عاجلة': 'high',
+      'low': 'low',
+      'medium': 'medium',
+      'high': 'high',
+    };
+
+    const parsedTasks: Task[] = data.values
+      .filter((row: any[]) => row && row.length > 0 && row[0]) // must have ID
+      .map((row: any[]): Task => {
+        const id = String(row[0]).trim();
+        const title = row[1] ? String(row[1]).trim() : 'مهمة بدون عنوان';
+        const roomNumber = row[2] ? String(row[2]).trim() : '';
+        
+        const rawDept = row[3] ? String(row[3]).trim() : 'housekeeping';
+        const department = deptReverseMap[rawDept] || 'housekeeping';
+        
+        const description = row[4] ? String(row[4]).trim() : '';
+        
+        const rawStatus = row[5] ? String(row[5]).trim() : 'pending';
+        const status = statusReverseMap[rawStatus] || 'pending';
+        
+        const rawPriority = row[6] ? String(row[6]).trim() : 'medium';
+        const priority = priorityReverseMap[rawPriority] || 'medium';
+        
+        const assignedTo = row[7] === 'لم يتم التعيين' || !row[7] ? undefined : String(row[7]).trim();
+        
+        // Date parser
+        let createdAt = new Date().toISOString();
+        if (row[8]) {
+          try {
+            const rawDateStr = String(row[8]).trim();
+            // Convert ar-EG localized numbers if any, and replace odd characters
+            const normalizedDateStr = rawDateStr
+              .replace(/[٠-٩]/g, (d: string) => String.fromCharCode(d.charCodeAt(0) - 1632))
+              .replace(/،/g, ',');
+            const attempt = Date.parse(normalizedDateStr);
+            if (!isNaN(attempt)) {
+              createdAt = new Date(attempt).toISOString();
+            } else {
+              createdAt = rawDateStr;
+            }
+          } catch {
+            createdAt = row[8];
+          }
+        }
+
+        const createdBy = row[10] ? String(row[10]).trim() : 'نظام ريجنسي';
+
+        return {
+          id,
+          title,
+          roomNumber,
+          department,
+          description,
+          status,
+          priority,
+          assignedTo,
+          createdAt,
+          updatedAt: new Date().toISOString(),
+          synced: true,
+          createdBy,
+        };
+      });
+
+    return parsedTasks.filter(t => t.id && t.id !== 'معرّف المهمة (Task ID)');
+  } catch (error) {
+    console.error('Error fetching tasks from sheet:', error);
+    return null;
+  }
+}
